@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Farm-to-Fork IoT Node</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+
+<div class="container">
+
+    <header>
+        <h1>🥭 Farm-to-Fork IoT Node</h1>
+        <p>Low-Cost Cold-Chain Traceability PoC</p>
+    </header>
+
+    <!-- BATCH INFORMATION -->
+    <section class="batch-card">
+        <h2>Batch Information</h2>
+        <div class="batch-grid">
+            <div>
+                <span>Batch ID</span>
+                <strong>MANGO-M001</strong>
+            </div>
+            <div>
+                <span>Product</span>
+                <strong>Mango</strong>
+            </div>
+            <div>
+                <span>Quantity</span>
+                <strong>100 kg</strong>
+            </div>
+            <div>
+                <span>Origin</span>
+                <strong>Farm F01</strong>
+            </div>
+        </div>
+    </section>
+
+    <!-- FARM TO FORK -->
+    <section class="trace-card">
+        <h2>🌱 Farm-to-Fork Journey</h2>
+        <div id="journey" class="journey"></div>
+
+        <button id="stageActionBtn" class="stage-button" onclick="handleStageAction()">
+            ➡️ Move Batch to Next Stage
+        </button>
+
+        <div id="stageMessage" class="stage-message">
+            Current stage: FARM
+        </div>
+    </section>
+
+    <!-- SENSOR DASHBOARD -->
+    <section class="dashboard">
+        <div class="card">
+            <h3>🌡️ Temperature</h3>
+            <div id="temperature" class="value">-- °C</div>
+        </div>
+        <div class="card">
+            <h3>💧 Humidity</h3>
+            <div id="humidity" class="value">-- %</div>
+        </div>
+        <div class="card">
+            <h3>🧪 Gas / VOC</h3>
+            <div id="gasRaw" class="value">--</div>
+        </div>
+        <div class="card">
+            <h3>📡 Network</h3>
+            <div id="network" class="value">🟢 ONLINE</div>
+        </div>
+    </section>
+
+    <!-- CONTROLS -->
+    <section class="controls">
+        <button onclick="generateReading()">Generate Sensor Reading</button>
+        <button onclick="setNetwork('off')">🔴 Simulate Network Loss</button>
+        <button onclick="setNetwork('on')">🟢 Reconnect Network</button>
+        <button onclick="verifyIntegrity()">🔐 Verify Integrity</button>
+        <button onclick="verifyBlockchain()">⛓️ Verify Ledger</button>
+    </section>
+
+    <!-- SYNCHRONIZATION -->
+    <section class="sync-card">
+        <h2>🔄 Synchronization Status</h2>
+        <div class="sync-grid">
+            <div>
+                <span>Buffered Records</span>
+                <strong id="bufferedRecords">0</strong>
+            </div>
+            <div>
+                <span>Synced Records</span>
+                <strong id="syncedRecords">0</strong>
+            </div>
+            <div>
+                <span>Last Synchronization</span>
+                <strong id="lastSync">Not yet</strong>
+            </div>
+        </div>
+        <div id="syncMessage" class="sync-message">
+            Waiting for synchronization...
+        </div>
+    </section>
+
+    <!-- DATA INTEGRITY -->
+    <section class="integrity">
+        <h2>🔐 Data Integrity</h2>
+        <div id="integrityStatus">Not verified yet.</div>
+    </section>
+
+    <!-- QR -->
+    <section class="qr-card">
+        <h2>📱 Batch Trace QR</h2>
+        <p>Scan or open this QR to view the MANGO-M001 trace information.</p>
+        
+        <div style="text-align: center; margin: 15px 0;">
+            <img id="qrImage" 
+                 src="https://api.qrserver.com/v1/create-qr-code/?size=160x160&data={{ request.host_url }}trace/MANGO-M001" 
+                 alt="Batch Trace QR" 
+                 style="border: 2px solid #e2e8f0; border-radius: 8px; padding: 6px; background: white; max-width: 160px; height: auto;" />
+        </div>
+
+        <button onclick="showTrace()">🔎 Open Batch Trace</button>
+    </section>
+
+    <!-- BLOCKCHAIN -->
+    <section class="blockchain">
+        <h2>⛓️ Blockchain Ledger</h2>
+        <div class="ledger-summary">
+            <div>
+                Total Blocks:
+                <strong id="blockCount">1</strong>
+            </div>
+            <div>
+                Ledger Status:
+                <strong id="ledgerStatus">Not verified</strong>
+            </div>
+        </div>
+        <div id="blockchainContainer"></div>
+    </section>
+
+    <!-- SENSOR RECORDS -->
+    <section class="records">
+        <h2>Sensor Records</h2>
+        <div class="record-summary">
+            <div>
+                Total Records:
+                <strong id="totalRecords">0</strong>
+            </div>
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Time</th>
+                    <th>Temperature</th>
+                    <th>Humidity</th>
+                    <th>Gas / VOC</th>
+                    <th>Status</th>
+                    <th>Hash</th>
+                </tr>
+            </thead>
+            <tbody id="recordsTable"></tbody>
+        </table>
+    </section>
+
+</div>
+
+<script>
+let currentStageIndex = 0;
+
+// --------------------------------------------------
+// GENERATE SENSOR READING
+// --------------------------------------------------
+async function generateReading() {
+    const response = await fetch("/generate", { method: "POST" });
+    const data = await response.json();
+    updateDashboard(data);
+    loadData();
+    loadRecords();
+    loadBlockchain();
+}
+
+// --------------------------------------------------
+// NETWORK
+// --------------------------------------------------
+async function setNetwork(status) {
+    const response = await fetch("/network/" + status, { method: "POST" });
+    const data = await response.json();
+    updateNetwork(data.network_online);
+
+    if (data.synced > 0) {
+        document.getElementById("syncMessage").innerText =
+            "✅ " + data.synced + " buffered record(s) automatically synchronized to the ledger.";
+    } else if (data.network_online) {
+        document.getElementById("syncMessage").innerText =
+            "🟢 Network connected. No pending records.";
+    } else {
+        document.getElementById("syncMessage").innerText =
+            "🔴 Network unavailable. New records will be buffered locally.";
+    }
+
+    loadData();
+    loadRecords();
+    loadBlockchain();
+}
+
+// --------------------------------------------------
+// STAGE ACTION (NEXT STAGE OR RESET)
+// --------------------------------------------------
+async function handleStageAction() {
+    if (currentStageIndex >= 4) {
+        // Reset to FARM
+        const response = await fetch("/reset-batch", { method: "POST" });
+        const data = await response.json();
+        document.getElementById("stageMessage").innerText = "🔄 New Batch cycle started at FARM.";
+    } else {
+        // Advance stage
+        const response = await fetch("/next-stage", { method: "POST" });
+        const data = await response.json();
+        if (data.success) {
+            document.getElementById("stageMessage").innerText =
+                "✅ Batch moved to " + data.stage.name + " — " + data.stage.location;
+        } else {
+            document.getElementById("stageMessage").innerText = "🏁 Batch has reached RETAIL.";
+        }
+    }
+    loadData();
+    loadBlockchain();
+}
+
+function updateStageButton(stageIndex) {
+    currentStageIndex = stageIndex;
+    const btn = document.getElementById("stageActionBtn");
+    if (stageIndex >= 4) {
+        btn.innerText = "🔄 Start New Batch (Reset to FARM)";
+        btn.style.backgroundColor = "#16a34a"; // Green button for restart
+    } else {
+        btn.innerText = "➡️ Move Batch to Next Stage";
+        btn.style.backgroundColor = ""; // Default stylesheet color
+    }
+}
+
+// --------------------------------------------------
+// VERIFY SENSOR INTEGRITY
+// --------------------------------------------------
+async function verifyIntegrity() {
+    const response = await fetch("/verify");
+    const data = await response.json();
+    const box = document.getElementById("integrityStatus");
+
+    if (data.verified) {
+        box.innerHTML = "✅ ALL SENSOR RECORDS VERIFIED — No tampering detected.";
+        box.className = "verified";
+    } else {
+        box.innerHTML = "❌ TAMPERING DETECTED — Sensor record integrity failed.";
+        box.className = "tampered";
+    }
+}
+
+// --------------------------------------------------
+// VERIFY BLOCKCHAIN
+// --------------------------------------------------
+async function verifyBlockchain() {
+    const response = await fetch("/verify-blockchain");
+    const data = await response.json();
+    const status = document.getElementById("ledgerStatus");
+
+    if (data.verified) {
+        status.innerText = "✅ VERIFIED";
+        status.className = "verified-text";
+    } else {
+        status.innerText = "❌ INVALID";
+        status.className = "tampered-text";
+    }
+}
+
+// --------------------------------------------------
+// UPDATE DASHBOARD
+// --------------------------------------------------
+function updateDashboard(data) {
+    if (data.reading) {
+        document.getElementById("temperature").innerText = data.reading.temperature + " °C";
+        document.getElementById("humidity").innerText = data.reading.humidity + " %";
+        document.getElementById("gasRaw").innerText = data.reading.gas_raw;
+    }
+    updateNetwork(data.network_online);
+}
+
+// --------------------------------------------------
+// NETWORK DISPLAY
+// --------------------------------------------------
+function updateNetwork(online) {
+    const network = document.getElementById("network");
+    if (online) {
+        network.innerText = "🟢 ONLINE";
+    } else {
+        network.innerText = "🔴 OFFLINE";
+    }
+}
+
+// --------------------------------------------------
+// LOAD ALL DATA
+// --------------------------------------------------
+async function loadData() {
+    const response = await fetch("/data");
+    const data = await response.json();
+
+    renderJourney(data.stages, data.current_stage);
+    updateStageButton(data.current_stage);
+
+    document.getElementById("bufferedRecords").innerText = data.buffered;
+    document.getElementById("syncedRecords").innerText = data.synced;
+    document.getElementById("lastSync").innerText = data.last_sync_time || "Not yet";
+    updateNetwork(data.network_online);
+}
+
+// --------------------------------------------------
+// FARM TO FORK JOURNEY
+// --------------------------------------------------
+function renderJourney(stages, current) {
+    const container = document.getElementById("journey");
+    container.innerHTML = "";
+
+    stages.forEach((stage, index) => {
+        const item = document.createElement("div");
+        item.className = "journey-stage";
+
+        if (index < current) {
+            item.classList.add("completed");
+        }
+        if (index === current) {
+            item.classList.add("current");
+        }
+
+        item.innerHTML = `
+            <div class="stage-icon">${stage.icon}</div>
+            <strong>${stage.name}</strong>
+            <small>${stage.location}</small>
+            ${stage.time ? `<small>${stage.time}</small>` : `<small>Pending</small>`}
+        `;
+
+        container.appendChild(item);
+
+        if (index < stages.length - 1) {
+            const arrow = document.createElement("div");
+            arrow.className = "journey-arrow";
+            arrow.innerText = "→";
+            container.appendChild(arrow);
+        }
+    });
+}
+
+// --------------------------------------------------
+// SENSOR RECORDS
+// --------------------------------------------------
+async function loadRecords() {
+    const response = await fetch("/data");
+    const data = await response.json();
+    const table = document.getElementById("recordsTable");
+    table.innerHTML = "";
+
+    data.readings.forEach(reading => {
+        const row = document.createElement("tr");
+        row.innerHTML = `
+            <td>${reading.timestamp}</td>
+            <td>${reading.temperature} °C</td>
+            <td>${reading.humidity} %</td>
+            <td>${reading.gas_raw}</td>
+            <td>${reading.status}</td>
+            <td>${reading.hash.substring(0, 12)}...</td>
+        `;
+        table.appendChild(row);
+    });
+
+    document.getElementById("totalRecords").innerText = data.readings.length;
+    document.getElementById("bufferedRecords").innerText = data.buffered;
+    document.getElementById("syncedRecords").innerText = data.synced;
+}
+
+// --------------------------------------------------
+// BLOCKCHAIN DISPLAY
+// --------------------------------------------------
+async function loadBlockchain() {
+    const response = await fetch("/data");
+    const data = await response.json();
+    const blocks = data.blockchain;
+
+    document.getElementById("blockCount").innerText = blocks.length;
+    const container = document.getElementById("blockchainContainer");
+    container.innerHTML = "";
+
+    blocks.slice().reverse().forEach(block => {
+        const div = document.createElement("div");
+        div.className = "block";
+        const transaction = block.transactions[0];
+
+        div.innerHTML = `
+            <div class="block-header">
+                <strong>BLOCK #${block.index}</strong>
+                <span>${block.timestamp}</span>
+            </div>
+            <p><strong>Batch:</strong> ${transaction.batch_id}</p>
+            <p><strong>Event:</strong> ${transaction.event}</p>
+            ${transaction.stage ? `<p><strong>Stage:</strong> ${transaction.stage}</p>` : ""}
+            ${transaction.location ? `<p><strong>Location:</strong> ${transaction.location}</p>` : ""}
+            ${transaction.temperature !== undefined ? `<p><strong>Temperature:</strong> ${transaction.temperature} °C</p>` : ""}
+            ${transaction.humidity !== undefined ? `<p><strong>Humidity:</strong> ${transaction.humidity} %</p>` : ""}
+            ${transaction.gas_raw !== undefined ? `<p><strong>Gas / VOC:</strong> ${transaction.gas_raw}</p>` : ""}
+            <p class="hash"><strong>Previous Block:</strong> ${block.previous_hash.substring(0, 16)}...</p>
+            <p class="hash"><strong>Block Hash:</strong> ${block.hash.substring(0, 16)}...</p>
+        `;
+        container.appendChild(div);
+    });
+}
+
+// --------------------------------------------------
+// TRACE PAGE
+// --------------------------------------------------
+function showTrace() {
+    window.open("/trace/MANGO-M001", "_blank");
+}
+
+// --------------------------------------------------
+// START
+// --------------------------------------------------
+window.onload = function() {
+    loadData();
+    loadRecords();
+    loadBlockchain();
+};
+</script>
+
+</body>
+</html>
