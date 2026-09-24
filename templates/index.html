@@ -108,7 +108,9 @@
     <!-- DATA INTEGRITY -->
     <section class="integrity">
         <h2>🔐 Data Integrity</h2>
-        <div id="integrityStatus">Not verified yet.</div>
+        <div id="integrityStatus" style="padding: 10px; border-radius: 8px; font-weight: 500;">
+            Not verified yet.
+        </div>
     </section>
 
     <!-- QR -->
@@ -212,12 +214,10 @@ async function setNetwork(status) {
 // --------------------------------------------------
 async function handleStageAction() {
     if (currentStageIndex >= 4) {
-        // Reset to FARM
         const response = await fetch("/reset-batch", { method: "POST" });
         const data = await response.json();
         document.getElementById("stageMessage").innerText = "🔄 New Batch cycle started at FARM.";
     } else {
-        // Advance stage
         const response = await fetch("/next-stage", { method: "POST" });
         const data = await response.json();
         if (data.success) {
@@ -236,10 +236,10 @@ function updateStageButton(stageIndex) {
     const btn = document.getElementById("stageActionBtn");
     if (stageIndex >= 4) {
         btn.innerText = "🔄 Start New Batch (Reset to FARM)";
-        btn.style.backgroundColor = "#16a34a"; // Green button for restart
+        btn.style.backgroundColor = "#16a34a";
     } else {
         btn.innerText = "➡️ Move Batch to Next Stage";
-        btn.style.backgroundColor = ""; // Default stylesheet color
+        btn.style.backgroundColor = "";
     }
 }
 
@@ -247,16 +247,26 @@ function updateStageButton(stageIndex) {
 // VERIFY SENSOR INTEGRITY
 // --------------------------------------------------
 async function verifyIntegrity() {
-    const response = await fetch("/verify");
-    const data = await response.json();
     const box = document.getElementById("integrityStatus");
+    try {
+        const response = await fetch("/verify");
+        const data = await response.json();
 
-    if (data.verified) {
-        box.innerHTML = "✅ ALL SENSOR RECORDS VERIFIED — No tampering detected.";
-        box.className = "verified";
-    } else {
-        box.innerHTML = "❌ TAMPERING DETECTED — Sensor record integrity failed.";
-        box.className = "tampered";
+        if (data.verified) {
+            box.innerHTML = `<strong>✅ VERIFIED:</strong> ${data.message}`;
+            box.style.backgroundColor = "#dcfce7";
+            box.style.color = "#15803d";
+            box.style.border = "1px solid #86efac";
+        } else {
+            box.innerHTML = `<strong>❌ TAMPERING DETECTED:</strong> ${data.message}`;
+            box.style.backgroundColor = "#fee2e2";
+            box.style.color = "#b91c1c";
+            box.style.border = "1px solid #fca5a5";
+        }
+    } catch (err) {
+        console.error("Verification error:", err);
+        box.innerHTML = "⚠️ Verification request failed. Check server logs.";
+        box.style.color = "#b91c1c";
     }
 }
 
@@ -264,16 +274,22 @@ async function verifyIntegrity() {
 // VERIFY BLOCKCHAIN
 // --------------------------------------------------
 async function verifyBlockchain() {
-    const response = await fetch("/verify-blockchain");
-    const data = await response.json();
     const status = document.getElementById("ledgerStatus");
+    try {
+        const response = await fetch("/verify-blockchain");
+        const data = await response.json();
 
-    if (data.verified) {
-        status.innerText = "✅ VERIFIED";
-        status.className = "verified-text";
-    } else {
-        status.innerText = "❌ INVALID";
-        status.className = "tampered-text";
+        if (data.verified) {
+            status.innerText = "✅ VERIFIED";
+            status.style.color = "#16a34a";
+        } else {
+            status.innerText = "❌ INVALID";
+            status.style.color = "#dc2626";
+        }
+    } catch (err) {
+        console.error("Blockchain verification error:", err);
+        status.innerText = "⚠️ ERROR";
+        status.style.color = "#dc2626";
     }
 }
 
