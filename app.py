@@ -71,14 +71,14 @@ blockchain = []
 # HASHING
 # --------------------------------------------------
 
-def calculate_hash(record, previous_hash):
+def calculate_hash(record, prev_hash_val):
     data = {
         "timestamp": record["timestamp"],
         "temperature": record["temperature"],
         "humidity": record["humidity"],
         "ethylene": record.get("ethylene", 0),
         "gas_raw": record.get("gas_raw", 0),
-        "previous_hash": previous_hash
+        "previous_hash": prev_hash_val
     }
     encoded = json.dumps(data, sort_keys=True).encode()
     return hashlib.sha256(encoded).hexdigest()
@@ -348,35 +348,36 @@ def reset_batch():
 # SENSOR INTEGRITY
 # --------------------------------------------------
 
-@app.route("/verify")
+@app.route("/verify", methods=["GET", "POST"])
+@app.route("/verify_integrity", methods=["GET", "POST"])
 def verify():
     if not readings:
         return jsonify({
             "verified": True,
-            "message": "No records to verify."
+            "message": "No sensor records generated yet. Ledger is clean."
         })
 
     previous = "GENESIS"
-    for record in readings:
+    for idx, record in enumerate(readings):
         expected_hash = calculate_hash(record, previous)
-        if expected_hash != record["hash"]:
+        if expected_hash != record.get("hash"):
             return jsonify({
                 "verified": False,
-                "message": "Sensor data tampering detected!",
-                "record": record["timestamp"]
+                "message": f"Sensor tampering detected at record #{idx + 1} (Timestamp: {record.get('timestamp')})",
+                "record": record.get("timestamp")
             })
         previous = record["hash"]
 
     return jsonify({
         "verified": True,
-        "message": "All sensor records are cryptographically verified."
+        "message": f"All {len(readings)} sensor records cryptographically verified."
     })
 
 # --------------------------------------------------
 # BLOCKCHAIN INTEGRITY
 # --------------------------------------------------
 
-@app.route("/verify-blockchain")
+@app.route("/verify-blockchain", methods=["GET", "POST"])
 def verify_blockchain():
     for i in range(len(blockchain)):
         block = blockchain[i]
@@ -397,7 +398,7 @@ def verify_blockchain():
 
     return jsonify({
         "verified": True,
-        "message": "Blockchain ledger verified successfully."
+        "message": f"Blockchain ledger verified ({len(blockchain)} blocks intact)."
     })
 
 # --------------------------------------------------
